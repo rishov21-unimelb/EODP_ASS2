@@ -18,7 +18,7 @@ def log(msg=""):
     LOG.append(str(msg))
 
 
-BASE = Path(os.environ.get("EODP_BASE", r"C:\Users\shaun\EODP_ASS2"))
+BASE = Path(os.environ.get("EODP_BASE", r"C:\Users\shaun\EODP_ASS2")) #change for your own path 
 OUT = BASE / "outputs"
 OUT.mkdir(parents=True, exist_ok=True)
 OUT_STR = str(OUT) + os.sep
