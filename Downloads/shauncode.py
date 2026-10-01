@@ -65,7 +65,19 @@ rows = []
 for i, a in enumerate(corr_vars):
     for b in corr_vars[i + 1:]:
         rows.append({'var1': a, 'var2': b, **pair_metrics(df[a], df[b])})
-corr_tb1 = pd.DataFrame(rows)
-log(f"\nAll {len(corr_tb1)} pairs x 4 methods:")
-log(corr_tb1.round(3).to_string(index=False))
-log("Method: Pearson = linear, Spearman = monotonic (rank), MI/NMi = any dependence, estimated on 10 equal frequency bins")
+corr_tbl = pd.DataFrame(rows)
+log(f"\nAll {len(corr_tbl)} pairs x 4 methods:")
+log(corr_tbl.round(3).to_string(index=False))
+log("Method: Pearson = linear, Spearman = monotonic (rank), MI/NMi = any dependence, estimated on 10 equal frequency bins"
+    "so depend on the binning. MI is unbounded (nats). NMI is scaled to 0-1. MI/NMI have no sign.")
+
+def to_matrix(col):
+    M = pd.DataFrame(np.eye(len(corr_vars)) if col in ('pearson', 'spearman') else np.nan, 
+                     index=corr_vars, columns=corr_vars)
+    for _, r in corr_tbl.iterrows():
+        M.loc[r['var1'], r['var2']] = r[col]
+        M.loc[r['var2'], r['var1']] = r[col]
+    if col == 'NMI':
+        for v in corr_vars:
+            M.loc[v, v] = 1.0
+    return M
