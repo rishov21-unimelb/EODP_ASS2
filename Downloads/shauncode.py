@@ -27,3 +27,10 @@ def log(msg=""):
 
 df = pd.read_csv(IN_PATH)
 log(f"loaded processed data: {df.shape}")
+need = ["price_clean", "accomodates", 'bedrooms_imputed', 'bathrooms_num', 'dist_cbd_km',
+        'review_scores_rating', 'price_tier_code', 'room_type', 'property_type_group', 'distance_band']
+missing = [c for c in need if c not in df.columns]
+if missing:
+    raise ValueError(f"Missing columns {missing} - rerun code.py")
+
+
