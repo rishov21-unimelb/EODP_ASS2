@@ -5,6 +5,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
+from pathlib import Path
 
 pd.set_option('display.max_columns', None)
 np.random.seed(42)
@@ -15,11 +17,14 @@ def log(msg=""):
     LOG.append(str(msg))
 
 
+BASE = Path(r"C:\Users\shaun\EODP_ASS2")
+OUT = BASE / "outputs"
+OUT.mkdir(exist_ok=True)
+OUT_STR = str(OUT) + os.sep
 
-df = pd.read_csv('/mnt/user-data/uploads/listings.csv')
+df = pd.read_csv(BASE / "listings.csv")
 n_raw = len(df)
 log(f"Raw dataset shape: {df.shape}")
-
 
 
 df['price_clean'] = (df['price'].str.replace('$', '', regex=False)
@@ -304,14 +309,14 @@ ax.set_ylabel('Mean price ($)')
 ax.set_title('Mean Price by Distance-from-CBD Band')
 plt.xticks(rotation=20)
 plt.tight_layout()
-plt.savefig('/home/claude/outputs/price_by_distance.png', dpi=150)
+plt.savefig(OUT_STR + 'price_by_distance.png', dpi=150)
 plt.close()
 
-log("\nCharts saved to /home/claude/outputs/")
+log("\nCharts saved to " + str(OUT))
 
 # save the log to a text file and the processed dataframe
-with open('/home/claude/outputs/analysis_log.txt','w') as f:
+with open(OUT / "analysis_log.txt", 'w') as f:
     f.write("\n".join(LOG))
 
-df.to_csv('/home/claude/outputs/listings_processed.csv', index=False)
+df.to_csv(OUT / "listings_processed.csv", index=False)
 log("\nProcessed dataset saved.")
