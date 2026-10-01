@@ -113,4 +113,33 @@ CANDIDATES CONSIDERED BUT NOT IMPLEMENTED
 
 Final 3 selected (distance-from-CBD, bedrooms/beds missing-data strategy, property-type consolidation) were chosen because they are the most direct, well-evidenced structural drivers of short-term rental price (location, size/capacity, housing type) and are all required as usable numeric/categorical features before any later price-tier analysis (covered elsewhere in the assignment, not in this script) can be done.
 
+======================================================================
+Additional preprocessing (target, bathrooms, rating)
+======================================================================
+[Target] Tertile cut-offs: Budget <= $186.80 < Mid <= $303.28 < Premium
+[Target] Tier counts:
+price_tier
+Budget     6325
+Mid        6323
+Premium    6324
+[Target] Tier shares (%): {'Budget': 33.3, 'Mid': 33.3, 'Premium': 33.3}
+[Target] Alternative (fixed $100/$250 cut-offs) would give shares (%): {'Budget': 11.3, 'Mid': 41.1, 'Premium': 47.5}
+NOTE: price_clean / log_price define the target, so they are EXCLUDED from the modelling predictors (target leakage). price_clean is used as the continuous proxy only inside the correlation analysis.
+
+[Bathrooms] source: existing 'bathrooms' column; still missing: 19 (0.10%)
+[Bathrooms] after median-by-room_type imputation, missing: 0
+
+[Rating] review_scores_rating missing: 2706 (14.3%)
+[Rating] % missing by price tier (informative missingness check):
+price_tier
+Budget     19.6
+Mid         9.8
+Premium    13.4
+[Rating] corr(rating, price): observed-only 0.089 -> after median imputation 0.077
+Correlation analysis (Code_part2.py) uses pairwise deletion on the raw column; the imputed column + has_rating flag are kept for later modelling.
+[Skew] minimum_nights: skewness = 19.16, max = 365, median = 2
+[Skew] host_listings_count: skewness = 4.09, max = 660, median = 3
+[Skew] number_of_reviews: skewness = 5.91, max = 3131, median = 15
+[Skew] availability_365: skewness = -0.23, max = 365, median = 233
+
 Charts saved to C:\Users\shaun\EODP_ASS2\outputs

@@ -308,6 +308,80 @@ log("Final 3 selected (distance-from-CBD, bedrooms/beds missing-data strategy, "
     "categorical features before any later price-tier analysis (covered "
     "elsewhere in the assignment, not in this script) can be done.")
 
+#rest of the preprocessing -shaun
+log("\n" + "=" * 70)
+log("Additional preprocessing (target, bathrooms, rating)")
+log("=" * 70)
+
+# price tiers -------
+# Tertiles give three equal-sized classes. Fixed dollar cut-offs are the
+# alternative: they are easier to read but give unbalanced classes in a right-skewed market.
+q1, q2 = df['price_clean'].quantile([1/3, 2/3])
+tier_labels = ['Budget', 'Mid', 'Premium']
+df['price_tier'] = pd.qcut(df['price_clean'], q=3, labels=tier_labels)
+df['price_tier_code'] = df['price_tier'].cat.codes          # 0,1,2 (ordinal)
+tier_counts = df['price_tier'].value_counts().reindex(tier_labels)
+log(f"[Target] Tertile cut-offs: Budget <= ${q1:.2f} < Mid <= ${q2:.2f} < Premium")
+log(f"[Target] Tier counts:\n{tier_counts.to_string()}")
+log(f"[Target] Tier shares (%): {(tier_counts / len(df) * 100).round(1).to_dict()}")
+fixed = pd.cut(df['price_clean'], [0, 100, 250, np.inf], labels=tier_labels)
+log(f"[Target] Alternative (fixed $100/$250 cut-offs) would give shares (%): "
+    f"{(fixed.value_counts(normalize=True).reindex(tier_labels) * 100).round(1).to_dict()}")
+log("NOTE: price_clean / log_price define the target, so they are EXCLUDED from the "
+    "modelling predictors (target leakage). price_clean is used as the continuous "
+    "proxy only inside the correlation analysis.")
+
+# Bathrooms: numeric from bathrooms_text -------
+def parse_bath(s):
+    if pd.isna(s):
+        return np.nan
+    s = str(s).lower()
+    m = re.search(r'(\d+(?:\.\d+)?)', s)
+    if m:
+        return float(m.group(1))
+    if 'half' in s:
+        return 0.5
+    return np.nan
+
+if 'bathrooms' in df.columns and df['bathrooms'].notna().any():
+    df['bathrooms_num'] = df['bathrooms'].astype(float)
+    src = "existing 'bathrooms' column"
+else:
+    df['bathrooms_num'] = np.nan
+    src = "bathrooms_text parse"
+if 'bathrooms_text' in df.columns:
+    parsed = df['bathrooms_text'].apply(parse_bath)
+    df['bathrooms_num'] = df['bathrooms_num'].fillna(parsed)
+n_bath_miss = df['bathrooms_num'].isna().sum()
+log(f"\n[Bathrooms] source: {src}; still missing: {n_bath_miss} "
+    f"({n_bath_miss / len(df) * 100:.2f}%)")
+bath_med = df.groupby('room_type')['bathrooms_num'].transform('median')
+df['bathrooms_num'] = df['bathrooms_num'].fillna(bath_med).fillna(df['bathrooms_num'].median())
+log(f"[Bathrooms] after median-by-room_type imputation, missing: {df['bathrooms_num'].isna().sum()}")
+
+# review_scores_rating: missing + indicator -------
+n_rating_miss = df['review_scores_rating'].isna().sum()
+log(f"\n[Rating] review_scores_rating missing: {n_rating_miss} "
+    f"({n_rating_miss / len(df) * 100:.1f}%)")
+miss_tier = df.groupby('price_tier', observed=True)['review_scores_rating'].apply(lambda x: x.isna().mean() * 100)
+log(f"[Rating] % missing by price tier (informative missingness check):\n{miss_tier.round(1).to_string()}")
+df['has_rating'] = df['review_scores_rating'].notna().astype(int)
+r_before = df[['review_scores_rating', 'price_clean']].corr().iloc[0, 1]
+df['review_scores_rating_imp'] = df['review_scores_rating'].fillna(df['review_scores_rating'].median())
+r_after = df[['review_scores_rating_imp', 'price_clean']].corr().iloc[0, 1]
+log(f"[Rating] corr(rating, price): observed-only {r_before:.3f} -> after median imputation {r_after:.3f}")
+log("Correlation analysis (Code_part2.py) uses pairwise deletion on the raw column; "
+    "the imputed column + has_rating flag are kept for later modelling.")
+
+# Other features: skew handling + binary encoding ----
+for c in ['minimum_nights', 'host_listings_count', 'number_of_reviews', 'availability_365']:
+    if c in df.columns:
+        sk = df[c].skew()
+        log(f"[Skew] {c}: skewness = {sk:.2f}, max = {df[c].max():.0f}, median = {df[c].median():.0f}")
+if 'instant_bookable' in df.columns:
+    df['instant_bookable_flag'] = (df['instant_bookable'].astype(str).str.lower() == 't').astype(int)
+
+
 # CHARTS (for the 3.2 tasks only)
 
 sns.set_style("whitegrid")
