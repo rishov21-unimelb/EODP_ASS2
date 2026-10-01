@@ -34,3 +34,38 @@ if missing:
     raise ValueError(f"Missing columns {missing} - rerun code.py")
 
 
+#correlation analyis
+
+log("\n" + "=" * 70)
+log("Correlation analysis (Pearson, Spearman, MI, NMI)")
+log("=" * 70)
+
+corr_vars = ['price_clean', 'accomodates', 'bedrooms_imputed', 'bathrooms_num', 'dist_cbd_km', 'review_scores_rating']
+log(f"Variable: {corr_vars} (price_clean = continuous proxy for the price-tier target)")
+log("Jutification: capacity (accomodates/bedrooms/bathrooms), location (dist_cbd_km), and quality (rating) are the main drivers of tier membership.")
+
+def discretise(s, bins=10):
+    if s.nunique() <= bins:
+        return pd.factorize(s)[0]
+    return pd.qcut(s, q=bins, labels=False, duplicates='drop').astype(int)
+
+def pair_metrics(a, b):
+    m = a.notna() & b.notna()
+    x, y = a[m], b[m]
+    dx, dy = discretise(x), discretise(y)
+    return {
+        'n': int(m.sum()),
+        'pearson': stats.pearsonr(x, y)[0],
+        'spearman': stats.spearmanr(x, y)[0],
+        'mi': mutual_info_score(dx, dy),
+        'nmi': normalized_mutual_info_score(dx, dy)
+    }
+
+rows = []
+for i, a in enumerate(corr_vars):
+    for b in corr_vars[i + 1:]:
+        rows.append({'var1': a, 'var2': b, **pair_metrics(df[a], df[b])})
+corr_tb1 = pd.DataFrame(rows)
+log(f"\nAll {len(corr_tb1)} pairs x 4 methods:")
+log(corr_tb1.round(3).to_string(index=False))
+log("Method: Pearson = linear, Spearman = monotonic (rank), MI/NMi = any dependence, estimated on 10 equal frequency bins")
