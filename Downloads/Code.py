@@ -6,6 +6,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import re
 from pathlib import Path
 
 pd.set_option('display.max_columns', None)
@@ -17,9 +18,9 @@ def log(msg=""):
     LOG.append(str(msg))
 
 
-BASE = Path(r"C:\Users\shaun\EODP_ASS2")
+BASE = Path(os.environ.get("EODP_BASE", r"C:\Users\shaun\EODP_ASS2"))
 OUT = BASE / "outputs"
-OUT.mkdir(exist_ok=True)
+OUT.mkdir(parents=True, exist_ok=True)
 OUT_STR = str(OUT) + os.sep
 
 df = pd.read_csv(BASE / "listings.csv")
@@ -39,8 +40,10 @@ log(f"\n[Basic cleaning] price missing: {n_missing_price} ({n_missing_price/n_ra
 df = df[df['price_clean'].notna()].copy()
 n_after_price_drop = len(df)
 
-# outlier cap: prices > $1500/night are implausible data-entry errors for
-# short-term Melbourne rentals (99th pct = $1340.86); remove them
+# outlier cap: prices > $1500/night are treated as implausible for short-term
+# Melbourne rentals; the actual 99th percentile is logged below so the cut-off is evidence-based
+p99_price = df['price_clean'].quantile(0.99)
+log(f"[Basic cleaning] 99th percentile of valid prices: ${p99_price:.2f}")
 outlier_cutoff = 1500
 n_outliers = (df['price_clean'] > outlier_cutoff).sum()
 log(f"[Basic cleaning] price outliers (> ${outlier_cutoff}): {n_outliers} "
@@ -133,7 +136,7 @@ private_observed_mode = df.loc[df['room_type']=='Private room','bedrooms'].dropn
 log(f"Alternative considered - global median imputation: global median bedrooms = "
     f"{global_median_bed:.0f}, but observed Private-room bedrooms are overwhelmingly "
     f"{private_observed_mode:.0f} "
-    f"({(df.loc[df['room_type']=='Private room','bedrooms']==private_observed_mode).mean()*100:.1f}% "
+    f"({(df.loc[df['room_type']=='Private room','bedrooms'].dropna()==private_observed_mode).mean()*100:.1f}% "
     f"of non-missing Private-room rows) - global median would systematically "
     f"overstate bedroom counts for private/shared rooms.")
 
@@ -201,26 +204,34 @@ log(f"\nAlternative considered - top-10 + 'Other' bucket: would dump "
     f"undifferentiated 'Other' group, hiding physically meaningful differences "
     f"relevant to price. Rejected.")
 
-# CHOSEN: rule-based keyword grouping into physically-meaningful categories
-def consolidate(pt):
+# CHOSEN: two-step grouping = (entire place vs room) x (building type).
+# Raw property_type strings such as "Private room in home" vs "Entire home" differ hugely in
+# price, so building type alone would throw that signal away (see eta-squared below).
+NICHE_KEYS = ['tiny home', 'boat', 'houseboat', 'cabin', 'camper', 'rv', 'treehouse', 'yurt',
+              'dome', 'tent', 'barn', 'container', 'farm stay', 'campsite', 'island',
+              'religious building']
+
+def building_type(pt):
     p = pt.lower()
-    if any(k in p for k in ['hostel']):
-        return 'Hostel/Shared'
-    if any(k in p for k in ['hotel', 'aparthotel', 'bed and breakfast', 'bnb']):
-        return 'Hotel/B&B'
-    if any(k in p for k in ['tiny home', 'boat', 'houseboat', 'cabin', 'camper', 'rv',
-                             'treehouse', 'yurt', 'dome', 'tent', 'barn', 'container',
-                             'farm stay', 'campsite', 'island', 'religious building']):
+    if any(k in p for k in ['hotel', 'aparthotel', 'bed and breakfast', 'bnb', 'hostel']):
+        return 'Hotel/B&B/Hostel'
+    # word-boundary match: plain substring 'rv' wrongly matched "serviced apartment"
+    if any(re.search(r'\b' + re.escape(k) + r'\b', p) for k in NICHE_KEYS):
         return 'Unique/Niche'
-    if any(k in p for k in ['home', 'house', 'townhouse', 'cottage', 'villa',
-                             'bungalow', 'chalet', 'cabin']):
+    if any(k in p for k in ['home', 'house', 'townhouse', 'cottage', 'villa', 'bungalow', 'chalet']):
         return 'House'
     if any(k in p for k in ['rental unit', 'condo', 'loft', 'serviced apartment',
                              'guest suite', 'guesthouse']):
         return 'Apartment/Unit'
     return 'Other'
 
-df['property_type_group'] = df['property_type'].apply(consolidate)
+def consolidate(row):
+    b = building_type(row['property_type'])
+    if row['room_type'] == 'Entire home/apt':
+        return 'Entire ' + (b if b in ('House', 'Apartment/Unit') else 'Unique/Other')
+    return 'Room in ' + (b if b in ('House', 'Apartment/Unit', 'Hotel/B&B/Hostel') else 'Unique/Other')
+
+df['property_type_group'] = df.apply(consolidate, axis=1)
 grp_counts = df['property_type_group'].value_counts()
 n_categories_after = grp_counts.shape[0]
 log(f"\n[Chosen] Consolidated into {n_categories_after} groups:")
@@ -251,9 +262,16 @@ log(f"[Impact] eta-squared (variance in price explained), raw property_type "
     f"(categories with >=10 listings, n={len(valid_cats)} categories): {eta2_before:.3f}")
 log(f"[Impact] eta-squared, consolidated property_type_group "
     f"({n_categories_after} categories): {eta2_after:.3f}")
-log("-> consolidation retains almost all of the price-explanatory power of the raw "
-    "field while cutting the category count and removing categories too small to "
-    "generalise from.")
+df['_building_only'] = df['property_type'].apply(building_type)
+eta2_building_only = eta_squared([g['price_clean'].values for _, g in df.groupby('_building_only')])
+df = df.drop(columns='_building_only')
+log(f"[Impact] Alternative considered - building type only (no entire/room split, "
+    f"{df['property_type'].apply(building_type).nunique()} groups): eta-squared = {eta2_building_only:.3f} "
+    f"-> rejected, it discards the entire-vs-room price gap.")
+log(f"[Impact] Chosen grouping retains {eta2_after/eta2_before*100:.0f}% of the raw field's "
+    f"eta-squared ({eta2_after:.3f} / {eta2_before:.3f}) with {n_categories_after} groups instead of "
+    f"{len(valid_cats)} (+{n_categories_before - len(valid_cats)} categories with <10 listings).")
+log("Mean price by group:\n" + df.groupby('property_type_group')['price_clean'].mean().round(2).to_string())
 
 # ============================================================
 # CANDIDATES NOT SELECTED (named for completeness, per assignment requirement
@@ -262,22 +280,26 @@ log("-> consolidation retains almost all of the price-explanatory power of the r
 log("\n" + "="*70)
 log("CANDIDATES CONSIDERED BUT NOT IMPLEMENTED")
 log("="*70)
-log("""
+_mn = df['minimum_nights']
+_hl = df['host_listings_count']
+log(f"""
 4. Review-recency feature (days_since_last_review): useful for gauging listing
    activity/staleness, but not a strong theoretical driver of nightly *price*
    itself - it reflects booking demand history, not the listing's price
-   positioning. Lower priority for a price-tier question than location/size/type.
+   positioning. {df['last_review'].isna().mean()*100:.1f}% of clean rows have no last_review date, so the
+   feature would also be undefined for those listings.
 
 5. Minimum-stay discretisation (short/medium/long): minimum_nights is heavily
-   skewed (median=2, mean=4.6, max=1000) and dominated by short-stay listings
-   (~75% require <=3 nights); it speaks to booking policy rather than the
-   physical/locational attributes that most plausibly separate price tiers.
+   skewed (median={_mn.median():.0f}, mean={_mn.mean():.2f}, max={_mn.max():.0f}) and dominated by
+   short-stay listings ({(_mn <= 3).mean()*100:.1f}% require <=3 nights; only {(_mn >= 30).mean()*100:.1f}% require 30+);
+   it speaks to booking policy rather than the physical/locational attributes
+   that most plausibly separate price tiers.
 
 6. Host-listings-count flag (single- vs multi-listing host): potentially
    interesting (professional/multi-property hosts vs individual hosts) but
-   host_listings_count has its own data-quality issues (max=667, likely
-   Airbnb-wide counts, not Melbourne-specific) which would need separate
-   cleaning before it could be trusted as a price-tier predictor.
+   host_listings_count is extremely skewed (median={_hl.median():.0f}, max={_hl.max():.0f}),
+   so it may reflect Airbnb-wide rather than Melbourne-only counts and would
+   need separate cleaning before it could be trusted as a price-tier predictor.
 """)
 log("Final 3 selected (distance-from-CBD, bedrooms/beds missing-data strategy, "
     "property-type consolidation) were chosen because they are the most direct, "
@@ -299,7 +321,7 @@ sns.histplot(df['log_price'], bins=50, ax=axes[1], color='#55A868')
 axes[1].set_title('Log(Price) Distribution')
 axes[1].set_xlabel('log(Price)')
 plt.tight_layout()
-plt.savefig('/home/claude/outputs/price_distribution.png', dpi=150)
+plt.savefig(OUT_STR + 'price_distribution.png', dpi=150)
 plt.close()
 
 # 2. Mean price by distance band

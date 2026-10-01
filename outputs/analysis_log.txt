@@ -1,0 +1,116 @@
+Raw dataset shape: (25728, 90)
+
+[Basic cleaning] price missing: 6553 (25.47%)
+[Basic cleaning] 99th percentile of valid prices: $1589.97
+[Basic cleaning] price outliers (> $1500): 203 (1.06% of price-valid rows)
+[Basic cleaning] Final clean sample size: 18972 (73.7% of raw 25728 rows retained)
+
+======================================================================
+TASK 1: Distance-from-CBD discretisation
+======================================================================
+Alternative considered - quantile tertiles: cutoffs at 2.16km / 10.30km (33rd/66th percentile)
+
+Chosen approach - fixed geographic bins (Inner<5km / Middle 5-15km / Outer>15km):
+distance_band
+Inner (<5km)       9238
+Middle (5-15km)    4791
+Outer (>15km)      4943
+Group balance: {'Inner (<5km)': 48.7, 'Middle (5-15km)': 25.3, 'Outer (>15km)': 26.1}
+Reasoning: fixed bins align with Melbourne's recognised inner-city / middle-ring / outer-suburb structure (train zone boundaries), making bands interpretable to a reader, whereas quantile tertiles would force exactly 33.3% into each bin regardless of whether that reflects a real geographic break.
+
+[Impact] Pearson correlation(dist_cbd_km, price): r = 0.064
+[Impact] Mean price by distance band:
+distance_band
+Inner (<5km)       285.82
+Middle (5-15km)    264.20
+Outer (>15km)      285.27
+[Impact] One-way ANOVA across bands: F = 22.36, p = 1.99e-10
+[Impact] Inner-band mean price is 0.2% higher than outer-band mean price ($285.82 vs $285.27)
+
+======================================================================
+TASK 2: Missing-data strategy for bedrooms/beds
+======================================================================
+Missingness of 'bedrooms' (%) by room_type:
+room_type
+Entire home/apt     2.6
+Hotel room          9.8
+Private room       51.2
+Shared room        63.3
+
+Missingness of 'beds' (%) by room_type:
+room_type
+Entire home/apt    3.8
+Hotel room         0.0
+Private room       4.1
+Shared room        6.3
+
+Overall: bedrooms missing = 2777 (14.6%), beds missing = 737 (3.9%)
+
+Alternative considered - drop rows with missing bedrooms/beds: would remove 3392 rows (17.9% of clean sample) - rejected, too much data loss and drop is concentrated in Private/Shared rooms (51.2% missing), biasing the remaining sample toward entire-home listings.
+Alternative considered - global median imputation: global median bedrooms = 2, but observed Private-room bedrooms are overwhelmingly 1 (79.7% of non-missing Private-room rows) - global median would systematically overstate bedroom counts for private/shared rooms.
+
+[Chosen] Private/Shared/Hotel room -> impute bedrooms = 1 (4691 rows in this group)
+[Chosen] Entire home/apt -> impute bedrooms/beds by median within accommodates group
+[Impact] bedrooms missing before: 2777 -> after: 0
+[Impact] beds missing before: 737 -> after: 0
+[Impact] corr(bedrooms, price) before imputation (n=16195): 0.553
+[Impact] corr(bedrooms, price) after imputation (n=18972): 0.585
+[Impact] mean bedrooms before (observed only): 1.949 -> after imputation (full sample): 1.814
+
+======================================================================
+TASK 3: Property-type consolidation
+======================================================================
+Raw property_type categories: 75, of which 36 have < 10 listings
+
+Alternative considered - top-10 + 'Other' bucket: would dump 1719 rows (9.1%) with very different housing styles (e.g. tiny homes, farm stays, boats, hostels) into one undifferentiated 'Other' group, hiding physically meaningful differences relevant to price. Rejected.
+
+[Chosen] Consolidated into 7 groups:
+property_type_group
+Entire Apartment/Unit       9660
+Entire House                4277
+Room in House               3106
+Room in Apartment/Unit      1044
+Room in Hotel/B&B/Hostel     488
+Entire Unique/Other          344
+Room in Unique/Other          53
+
+[Impact] Smallest category size before: 1 listings -> after: 53 listings
+[Impact] eta-squared (variance in price explained), raw property_type (categories with >=10 listings, n=39 categories): 0.300
+[Impact] eta-squared, consolidated property_type_group (7 categories): 0.261
+[Impact] Alternative considered - building type only (no entire/room split, 5 groups): eta-squared = 0.005 -> rejected, it discards the entire-vs-room price gap.
+[Impact] Chosen grouping retains 87% of the raw field's eta-squared (0.261 / 0.300) with 7 groups instead of 39 (+36 categories with <10 listings).
+Mean price by group:
+property_type_group
+Entire Apartment/Unit       286.74
+Entire House                417.35
+Entire Unique/Other         331.80
+Room in Apartment/Unit      148.67
+Room in Hotel/B&B/Hostel    234.32
+Room in House               118.27
+Room in Unique/Other        194.64
+
+======================================================================
+CANDIDATES CONSIDERED BUT NOT IMPLEMENTED
+======================================================================
+
+4. Review-recency feature (days_since_last_review): useful for gauging listing
+   activity/staleness, but not a strong theoretical driver of nightly *price*
+   itself - it reflects booking demand history, not the listing's price
+   positioning. 14.3% of clean rows have no last_review date, so the
+   feature would also be undefined for those listings.
+
+5. Minimum-stay discretisation (short/medium/long): minimum_nights is heavily
+   skewed (median=2, mean=3.15, max=365) and dominated by
+   short-stay listings (87.6% require <=3 nights; only 1.2% require 30+);
+   it speaks to booking policy rather than the physical/locational attributes
+   that most plausibly separate price tiers.
+
+6. Host-listings-count flag (single- vs multi-listing host): potentially
+   interesting (professional/multi-property hosts vs individual hosts) but
+   host_listings_count is extremely skewed (median=3, max=660),
+   so it may reflect Airbnb-wide rather than Melbourne-only counts and would
+   need separate cleaning before it could be trusted as a price-tier predictor.
+
+Final 3 selected (distance-from-CBD, bedrooms/beds missing-data strategy, property-type consolidation) were chosen because they are the most direct, well-evidenced structural drivers of short-term rental price (location, size/capacity, housing type) and are all required as usable numeric/categorical features before any later price-tier analysis (covered elsewhere in the assignment, not in this script) can be done.
+
+Charts saved to C:\Users\shaun\EODP_ASS2\outputs
