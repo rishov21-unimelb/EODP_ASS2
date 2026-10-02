@@ -1,0 +1,62 @@
+loaded processed data: (18972, 103)
+
+======================================================================
+Correlation analysis (Pearson, Spearman, MI, NMI)
+======================================================================
+Variable: ['price_clean', 'accommodates', 'bedrooms_imputed', 'bathrooms_num', 'dist_cbd_km', 'review_scores_rating'] (price_clean = continuous proxy for the price-tier target)
+Jutification: capacity (accommodates/bedrooms/bathrooms), location (dist_cbd_km), and quality (rating) are the main drivers of tier membership.
+
+All 15 pairs x 4 methods:
+            var1                 var2     n  pearson  spearman    MI   NMI
+     price_clean         accommodates 18972    0.585     0.682 0.269 0.149
+     price_clean     bedrooms_imputed 18972    0.585     0.655 0.285 0.164
+     price_clean        bathrooms_num 18972    0.359     0.395 0.127 0.080
+     price_clean          dist_cbd_km 18972    0.064    -0.050 0.055 0.024
+     price_clean review_scores_rating 16266    0.089     0.088 0.016 0.007
+    accommodates     bedrooms_imputed 18972    0.850     0.859 0.632 0.509
+    accommodates        bathrooms_num 18972    0.484     0.510 0.171 0.156
+    accommodates          dist_cbd_km 18972    0.137    -0.011 0.046 0.025
+    accommodates review_scores_rating 16266    0.020    -0.014 0.003 0.002
+bedrooms_imputed        bathrooms_num 18972    0.558     0.582 0.220 0.217
+bedrooms_imputed          dist_cbd_km 18972    0.202     0.088 0.066 0.038
+bedrooms_imputed review_scores_rating 16266    0.019     0.010 0.004 0.003
+   bathrooms_num          dist_cbd_km 18972    0.075     0.104 0.023 0.014
+   bathrooms_num review_scores_rating 16266   -0.025     0.024 0.003 0.002
+     dist_cbd_km review_scores_rating 16266    0.058     0.121 0.020 0.009
+Method: Pearson = linear, Spearman = monotonic (rank), MI/NMi = any dependence, estimated on 10 equal frequency bins so depend on the binning. MI is unbounded (nats). NMI is scaled to 0-1. MI/NMI have no sign.
+
+Pairs where Pearson - Spearman is largest (skew/outliers/non-linearity):
+            var1        var2  pearson  spearman
+    accommodates dist_cbd_km    0.137    -0.011
+bedrooms_imputed dist_cbd_km    0.202     0.088
+     price_clean dist_cbd_km    0.064    -0.050
+
+Pairs where Pearson-rank and NMI-rank disagree most:
+       var1                 var2  pearson   NMI  rank_pearson  rank_NMI
+price_clean         accommodates    0.585 0.149           2.0       5.0
+price_clean review_scores_rating    0.089 0.007           9.0      12.0
+price_clean          dist_cbd_km    0.064 0.024          11.0       9.0
+
+Predictor-predictor pairs with |r| > 0.7 (Pearson or Spearman):
+        var1             var2  pearson  spearman   NMI
+accommodates bedrooms_imputed     0.85     0.859 0.509
+
+Target - Predictors ranked by Spearman with price_clean:
+           predictor  pearson  spearman    MI   NMI     n
+        accommodates    0.585     0.682 0.269 0.149 18972
+    bedrooms_imputed    0.585     0.655 0.285 0.164 18972
+       bathrooms_num    0.359     0.395 0.127 0.080 18972
+review_scores_rating    0.089     0.088 0.016 0.007 16266
+         dist_cbd_km    0.064    -0.050 0.055 0.024 18972
+
+Tier target - Predictors vs price_tier_code (0=Budget,1=Mid,2=Premium):
+           predictor                type  spearman    MI   NMI
+        accommodates             numeric     0.643 0.227 0.187
+    bedrooms_imputed             numeric     0.621 0.235 0.208
+       bathrooms_num             numeric     0.386 0.092 0.094
+         dist_cbd_km             numeric    -0.040 0.028 0.016
+review_scores_rating             numeric     0.077 0.009 0.006
+           room_type nominal/ordinal-cat       NaN 0.194 0.226
+ property_type_group nominal/ordinal-cat       NaN 0.235 0.195
+       distance_band nominal/ordinal-cat       NaN 0.016 0.015
+Pearson/Spearman are not applicable to nominal predictors (room_type, property_type_group): their category codes have no order. Only MI/NMI are reported there.

@@ -57,8 +57,8 @@ def pair_metrics(a, b):
         'n': int(m.sum()),
         'pearson': stats.pearsonr(x, y)[0],
         'spearman': stats.spearmanr(x, y)[0],
-        'mi': mutual_info_score(dx, dy),
-        'nmi': normalized_mutual_info_score(dx, dy)
+        'MI': mutual_info_score(dx, dy),
+        'NMI': normalized_mutual_info_score(dx, dy)
     }
 
 rows = []
@@ -68,9 +68,10 @@ for i, a in enumerate(corr_vars):
 corr_tbl = pd.DataFrame(rows)
 log(f"\nAll {len(corr_tbl)} pairs x 4 methods:")
 log(corr_tbl.round(3).to_string(index=False))
-log("Method: Pearson = linear, Spearman = monotonic (rank), MI/NMi = any dependence, estimated on 10 equal frequency bins"
+log("Method: Pearson = linear, Spearman = monotonic (rank), MI/NMi = any dependence, estimated on 10 equal frequency bins "
     "so depend on the binning. MI is unbounded (nats). NMI is scaled to 0-1. MI/NMI have no sign.")
 
+#heatmap matricies
 def to_matrix(col):
     M = pd.DataFrame(np.eye(len(corr_vars)) if col in ('pearson', 'spearman') else np.nan, 
                      index=corr_vars, columns=corr_vars)
@@ -81,3 +82,60 @@ def to_matrix(col):
         for v in corr_vars:
             M.loc[v, v] = 1.0
     return M
+
+fig, axes = plt.subplots(2, 2, figsize=(14, 11))
+for ax, (col, vmin, vmax, cmap) in zip(axes.ravel(), [
+        ('pearson', -1, 1, 'coolwarm'), ('spearman', -1, 1, 'coolwarm'),
+        ('MI', 0, None, 'viridis'), ('NMI', 0, 1, 'viridis')]):
+    sns.heatmap(to_matrix(col), annot=True, fmt='.2f', cmap=cmap, vmin=vmin, vmax=vmax, ax=ax,
+                cbar_kws={'shrink': .8})
+    ax.set_title(col.capitalize() if col in ('pearson', 'spearman') else col)
+plt.tight_layout()
+plt.savefig(OUT_DIR + 'correlation_heatmaps.png', dpi=150)
+plt.close()
+
+
+#values to be discussed
+corr_tbl['abs_gap_pear_spear'] = (corr_tbl['pearson'] - corr_tbl['spearman']).abs()
+corr_tbl['rank_pearson'] = corr_tbl['pearson'].abs().rank(ascending=False)
+corr_tbl['rank_NMI'] = corr_tbl['NMI'].rank(ascending=False)
+corr_tbl['rank_gap'] = (corr_tbl['rank_pearson'] - corr_tbl['rank_NMI']).abs()
+log("\nPairs where Pearson - Spearman is largest (skew/outliers/non-linearity):")
+log(corr_tbl.nlargest(3, 'abs_gap_pear_spear')[['var1', 'var2', 'pearson', 'spearman']].round(3).to_string(index=False))
+log("\nPairs where Pearson-rank and NMI-rank disagree most:")
+log(corr_tbl.nlargest(3, 'rank_gap')[['var1', 'var2', 'pearson', 'NMI', 'rank_pearson', 'rank_NMI']].round(3).to_string(index=False))
+pred_pairs = corr_tbl[(corr_tbl.var1 != 'price_clean') & (corr_tbl.var2 != 'price_clean')]
+hi = pred_pairs[pred_pairs[['pearson', 'spearman']].abs().max(axis=1) > 0.7]
+log("\nPredictor-predictor pairs with |r| > 0.7 (Pearson or Spearman):")
+log(hi[['var1', 'var2', 'pearson', 'spearman', 'NMI']].round(3).to_string(index=False) if len(hi) else "none")
+tgt = corr_tbl[(corr_tbl.var1 == 'price_clean') | (corr_tbl.var2 == 'price_clean')].copy()
+tgt['predictor'] = np.where(tgt.var1 == 'price_clean', tgt.var2, tgt.var1)
+log("\nTarget - Predictors ranked by Spearman with price_clean:")
+log(tgt.reindex(tgt['spearman'].abs().sort_values(ascending=False).index)
+    [['predictor', 'pearson', 'spearman', 'MI', 'NMI', 'n']].round(3).to_string(index=False))
+
+log("\nTier target - Predictors vs price_tier_code (0=Budget,1=Mid,2=Premium):")
+tier_rows = []
+y_code = df['price_tier_code']
+for v in ['accommodates', 'bedrooms_imputed', 'bathrooms_num', 'dist_cbd_km', 'review_scores_rating']:
+    m = df[v].notna()
+    tier_rows.append({'predictor': v, 'type': 'numeric',
+                      'spearman': stats.spearmanr(df.loc[m, v], y_code[m])[0],
+                      'MI': mutual_info_score(discretise(df.loc[m, v]), y_code[m]),
+                      'NMI': normalized_mutual_info_score(discretise(df.loc[m, v]), y_code[m])})
+for v in ['room_type', 'property_type_group', 'distance_band']:
+    codes = pd.factorize(df[v])[0]
+    tier_rows.append({'predictor': v, 'type': 'nominal/ordinal-cat', 'spearman': np.nan,
+                      'MI': mutual_info_score(codes, y_code), 'NMI': normalized_mutual_info_score(codes, y_code)})
+    
+tier_tbl = pd.DataFrame(tier_rows)
+log(tier_tbl.round(3).to_string(index=False))
+log("Pearson/Spearman are not applicable to nominal predictors (room_type, property_type_group): their category codes have no order. " \
+    "Only MI/NMI are reported there.")
+
+corr_tbl.to_csv(OUT_DIR + 'correlation_table.csv', index=False)
+tier_tbl.to_csv(OUT_DIR + 'correlation_vs_tier_table.csv', index=False)
+with open(OUT_DIR + 'analysis_log_part2.txt', 'w') as f:
+    f.write("\n".join(LOG))
+log("\nSaved: correlation_heatmaps.png, correlation_table.csv, correlation_vs_tier_table.csv, "
+    "analysis_log_part2.txt")
