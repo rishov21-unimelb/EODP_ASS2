@@ -27,7 +27,7 @@ def log(msg=""):
 
 df = pd.read_csv(IN_PATH)
 log(f"loaded processed data: {df.shape}")
-need = ["price_clean", "accomodates", 'bedrooms_imputed', 'bathrooms_num', 'dist_cbd_km',
+need = ["price_clean", "accommodates", 'bedrooms_imputed', 'bathrooms_num', 'dist_cbd_km',
         'review_scores_rating', 'price_tier_code', 'room_type', 'property_type_group', 'distance_band']
 missing = [c for c in need if c not in df.columns]
 if missing:
@@ -40,9 +40,9 @@ log("\n" + "=" * 70)
 log("Correlation analysis (Pearson, Spearman, MI, NMI)")
 log("=" * 70)
 
-corr_vars = ['price_clean', 'accomodates', 'bedrooms_imputed', 'bathrooms_num', 'dist_cbd_km', 'review_scores_rating']
+corr_vars = ['price_clean', 'accommodates', 'bedrooms_imputed', 'bathrooms_num', 'dist_cbd_km', 'review_scores_rating']
 log(f"Variable: {corr_vars} (price_clean = continuous proxy for the price-tier target)")
-log("Jutification: capacity (accomodates/bedrooms/bathrooms), location (dist_cbd_km), and quality (rating) are the main drivers of tier membership.")
+log("Jutification: capacity (accommodates/bedrooms/bathrooms), location (dist_cbd_km), and quality (rating) are the main drivers of tier membership.")
 
 def discretise(s, bins=10):
     if s.nunique() <= bins:
