@@ -1,0 +1,92 @@
+import os
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+ 
+RANDOM_STATE = 42
+BASE = os.environ.get("EODP_BASE", r"C:\Users\shaun\EODP_ASS2")   # change for your own path
+df = pd.read_csv(os.path.join(BASE, "outputs", "listings_processed.csv"), low_memory=False)
+TIERS = ['Budget', 'Mid', 'Premium']
+ 
+# ---- 1. Features (no price-based columns: that would leak the answer) ----
+df['superhost_flag'] = (df['host_is_superhost'] == 't').astype(int)
+df['log_minimum_nights'] = np.log1p(df['minimum_nights'])            # log for skewed counts
+df['log_number_of_reviews'] = np.log1p(df['number_of_reviews'])
+df['log_host_listings_count'] = np.log1p(df['host_listings_count'])
+ 
+NUM_COLS = ['accommodates', 'bedrooms_imputed', 'beds_imputed', 'bathrooms_num',
+            'dist_cbd_km', 'review_scores_rating_imp', 'has_rating',
+            'log_number_of_reviews', 'log_minimum_nights', 'log_host_listings_count',
+            'availability_365', 'superhost_flag']
+dummies = pd.get_dummies(df['property_type_group'], prefix='ptype').astype(int)   # one-hot
+df = pd.concat([df, dummies], axis=1)
+X_COLS = NUM_COLS + list(dummies.columns)
+ 
+X = df[X_COLS]
+y = df['price_tier']
+ 
+# ---- 2. Stratified 80/20 split ----
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y,
+                                                    random_state=RANDOM_STATE)
+median_mn = X_train['log_minimum_nights'].median()                    # 9 missing values
+X_train = X_train.fillna({'log_minimum_nights': median_mn})
+X_test = X_test.fillna({'log_minimum_nights': median_mn})
+ 
+# ---- 3. Train a model and predict (KNN gets scaled features, tree does not) ----
+def fit_and_predict(name, params, X_tr, y_tr, X_ev):
+    if name == 'knn':
+        scaler = StandardScaler().fit(X_tr)                           # fit on training part only
+        X_tr, X_ev = scaler.transform(X_tr), scaler.transform(X_ev)
+        model = KNeighborsClassifier(**params)
+    else:
+        model = DecisionTreeClassifier(random_state=RANDOM_STATE, **params)
+    model.fit(X_tr, y_tr)
+    return model, model.predict(X_ev)
+ 
+# ---- 4. 5-fold stratified CV on the training set, scored by macro-F1 ----
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+ 
+def cv_macro_f1(name, params):
+    scores = []
+    for train_idx, val_idx in cv.split(X_train, y_train):
+        _, y_pred = fit_and_predict(name, params, X_train.iloc[train_idx], y_train.iloc[train_idx],
+                                    X_train.iloc[val_idx])
+        scores.append(f1_score(y_train.iloc[val_idx], y_pred, average='macro'))
+    return np.mean(scores)
+ 
+# ---- 5. Try every setting, keep the best ----
+knn_scores = {}
+for k in [1, 3, 5, 7, 9, 11, 15, 21, 31, 41, 51, 75, 101]:
+    for w in ['uniform', 'distance']:
+        knn_scores[(k, w)] = cv_macro_f1('knn', {'n_neighbors': k, 'weights': w})
+best_k, best_w = max(knn_scores, key=knn_scores.get)
+KNN_PARAMS = {'n_neighbors': best_k, 'weights': best_w}
+ 
+dt_scores = {}
+for d in [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, None]:
+    for leaf in [1, 5, 10, 20, 50, 100]:
+        dt_scores[(d, leaf)] = cv_macro_f1('dt', {'criterion': 'entropy', 'max_depth': d,
+                                                  'min_samples_leaf': leaf})
+best_d, best_leaf = max(dt_scores, key=dt_scores.get)
+DT_PARAMS = {'criterion': 'entropy', 'max_depth': best_d, 'min_samples_leaf': best_leaf}
+ 
+print(f"KNN best: {KNN_PARAMS}, CV macro-F1 {knn_scores[(best_k, best_w)]:.4f}")
+print(f"DT best:  {DT_PARAMS}, CV macro-F1 {dt_scores[(best_d, best_leaf)]:.4f}")
+ 
+# ---- 6. Final models on the full training set, scored once on the test set ----
+knn_model, knn_pred = fit_and_predict('knn', KNN_PARAMS, X_train, y_train, X_test)
+dt_model, dt_pred = fit_and_predict('dt', DT_PARAMS, X_train, y_train, X_test)
+zero_r_pred = [y_train.value_counts().idxmax()] * len(y_test)        # 0R baseline
+ 
+for name, pred in [('0R baseline', zero_r_pred), ('KNN', knn_pred), ('Decision Tree', dt_pred)]:
+    print(f"\n{name}: accuracy {accuracy_score(y_test, pred):.4f}, "
+          f"macro-F1 {f1_score(y_test, pred, average='macro'):.4f}")
+    p = precision_score(y_test, pred, labels=TIERS, average=None, zero_division=0)
+    r = recall_score(y_test, pred, labels=TIERS, average=None, zero_division=0)
+    f = f1_score(y_test, pred, labels=TIERS, average=None, zero_division=0)
+    for i, t in enumerate(TIERS):
+        print(f"  {t:8s} precision {p[i]:.4f}  recall {r[i]:.4f}  F1 {f[i]:.4f}")
