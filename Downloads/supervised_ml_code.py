@@ -16,7 +16,7 @@ from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_s
 RANDOM_STATE = 42
 np.random.seed(RANDOM_STATE)
  
-BASE = os.environ.get("EODP_BASE", r"C:\Users\Jim Zhu\Desktop\EODP")
+BASE = os.environ.get("EODP_BASE", r"C:\Users\shaun\EODP_ASS2")   # change for your own path
 IN_PATH = os.path.join(BASE, "outputs", "listings_processed.csv")
 OUT_DIR = os.path.join(BASE, "outputs") + os.sep
 os.makedirs(OUT_DIR, exist_ok=True)
