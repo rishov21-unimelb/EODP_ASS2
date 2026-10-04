@@ -1,0 +1,140 @@
+Loaded processed data: (18972, 103)
+instant_bookable non-missing values: 0 -> flag not used
+Predictors: 12 numeric + 7 one-hot property-type columns
+
+Target class counts (n=18972):
+price_tier
+Budget     6325
+Mid        6323
+Premium    6324
+
+Train n=15177, test n=3795
+Train tier shares (%):  {'Budget': 33.34, 'Mid': 33.33, 'Premium': 33.33}
+Test tier shares (%):   {'Budget': 33.33, 'Mid': 33.33, 'Premium': 33.33}
+Unstratified split test shares (%), same seed: {'Budget': 33.94, 'Mid': 33.28, 'Premium': 32.78}
+
+[KNN] CV macro-F1 at every value tried (rows = k, columns = weights):
+weights      distance  uniform
+n_neighbors                   
+1              0.6455   0.6455
+3              0.6671   0.6607
+5              0.6789   0.6773
+7              0.6835   0.6830
+9              0.6915   0.6872
+11             0.6952   0.6891
+15             0.6959   0.6902
+21             0.6973   0.6911
+31             0.6978   0.6893
+41             0.6979   0.6878
+51             0.6985   0.6862
+75             0.6951   0.6832
+101            0.6949   0.6811
+
+[DT] CV macro-F1 at every value tried (rows = max_depth, columns = min_samples_leaf):
+min_samples_leaf     1       5       10      20      50      100
+max_depth                                                       
+2                 0.6041  0.6041  0.6041  0.6041  0.6041  0.6041
+3                 0.6426  0.6426  0.6426  0.6426  0.6426  0.6426
+4                 0.6640  0.6640  0.6640  0.6639  0.6639  0.6639
+5                 0.6675  0.6672  0.6671  0.6666  0.6665  0.6657
+6                 0.6715  0.6721  0.6721  0.6723  0.6724  0.6732
+8                 0.6797  0.6791  0.6798  0.6792  0.6777  0.6772
+10                0.6812  0.6820  0.6840  0.6860  0.6813  0.6787
+12                0.6729  0.6738  0.6772  0.6832  0.6802  0.6791
+15                0.6613  0.6628  0.6710  0.6833  0.6795  0.6774
+20                0.6417  0.6457  0.6567  0.6771  0.6785  0.6774
+None              0.6281  0.6361  0.6559  0.6770  0.6785  0.6774
+
+[KNN] chosen: {'n_neighbors': 51, 'weights': 'distance'}, CV macro-F1 = 0.6985 (fold std 0.0051)
+[DT]  chosen: {'criterion': 'entropy', 'max_depth': 10, 'min_samples_leaf': 20}, CV macro-F1 = 0.6860 (fold std 0.0066)
+
+Effect of each hyperparameter changed from its default (CV macro-F1):
+model   hyperparameter default   chosen  cv_f1_default  cv_f1_chosen  change
+  KNN      n_neighbors       5       51         0.6789        0.6985  0.0196
+  KNN          weights uniform distance         0.6862        0.6985  0.0123
+   DT        criterion    gini  entropy         0.6840        0.6860  0.0020
+   DT        max_depth    None       10         0.6770        0.6860  0.0090
+   DT min_samples_leaf       1       20         0.6812        0.6860  0.0048
+
+0R baseline predicts 'Budget' for every listing (training counts: {'Budget': 5060, 'Mid': 5058, 'Premium': 5059})
+
+TEST-SET RESULTS (n=3795):
+             accuracy  macro_f1
+model                          
+0R baseline    0.3333    0.1667
+KNN (tuned)    0.6954    0.6983
+DT (tuned)     0.6796    0.6845
+
+Budget: precision / recall / F1
+             Budget_precision  Budget_recall  Budget_f1
+model                                                  
+0R baseline            0.3333         1.0000     0.5000
+KNN (tuned)            0.8154         0.7368     0.7741
+DT (tuned)             0.8199         0.7233     0.7686
+
+Mid: precision / recall / F1
+             Mid_precision  Mid_recall  Mid_f1
+model                                         
+0R baseline         0.0000      0.0000  0.0000
+KNN (tuned)         0.5800      0.6451  0.6108
+DT (tuned)          0.5435      0.6664  0.5987
+
+Premium: precision / recall / F1
+             Premium_precision  Premium_recall  Premium_f1
+model                                                     
+0R baseline             0.0000          0.0000      0.0000
+KNN (tuned)             0.7157          0.7043      0.7100
+DT (tuned)              0.7278          0.6490      0.6862
+
+Train / CV / test macro-F1: {'DT': {'train': 0.7137, 'cv': 0.686, 'test': 0.6845}, 'KNN': {'cv': 0.6985, 'test': 0.6983}}
+(KNN train score is not reported: with weights='distance' every training listing is its own nearest neighbour at distance 0, so it always scores 1.0 on training data.)
+
+Absolute improvement over 0R (percentage points):
+      model  macro_f1_gain_pts  accuracy_gain_pts
+KNN (tuned)              53.16              36.21
+ DT (tuned)              51.78              34.62
+
+Bootstrap (200 samples of the training set, scored on OOB rows; mean OOB share 36.8%):
+  KNN (tuned): mean 0.6907, std 0.0055, 95% interval [0.6804, 0.7020]
+  DT (tuned): mean 0.6771, std 0.0061, 95% interval [0.6640, 0.6881]
+
+[DT] built-in feature importance (information gain share, sums to 1):
+accommodates                0.4305
+property_type_group         0.1957
+bedrooms_imputed            0.1183
+log_host_listings_count     0.0571
+dist_cbd_km                 0.0484
+availability_365            0.0361
+log_minimum_nights          0.0322
+bathrooms_num               0.0273
+log_number_of_reviews       0.0269
+review_scores_rating_imp    0.0173
+beds_imputed                0.0058
+superhost_flag              0.0032
+has_rating                  0.0011
+
+Drop-one-feature: fall in CV macro-F1 when the feature is removed (bigger = more relied on):
+                          knn_f1_drop  dt_f1_drop  knn_rank  dt_rank
+feature                                                             
+property_type_group            0.0351      0.0297         1        1
+bathrooms_num                  0.0078      0.0104         4        2
+log_host_listings_count        0.0079      0.0063         3        3
+bedrooms_imputed               0.0034      0.0054         6        4
+log_minimum_nights             0.0089      0.0041         2        5
+dist_cbd_km                    0.0064      0.0033         5        6
+beds_imputed                   0.0029      0.0004         7        7
+review_scores_rating_imp      -0.0006      0.0003        10        8
+superhost_flag                -0.0021      0.0001        11        9
+has_rating                    -0.0022      0.0000        12       10
+availability_365               0.0018     -0.0000         9       11
+log_number_of_reviews         -0.0028     -0.0018        13       12
+accommodates                   0.0026     -0.0025         8       13
+
+Feature-set comparison (5-fold stratified CV macro-F1, tuned settings):
+                                      knn_cv_macro_f1  knn_cv_std  dt_cv_macro_f1  dt_cv_std  knn_change_vs_current  dt_change_vs_current
+feature_set                                                                                                                              
+current (continuous dist_cbd_km)               0.6985      0.0051          0.6860     0.0066                 0.0000                0.0000
+distance_band instead of dist_cbd_km           0.6921      0.0039          0.6848     0.0093                -0.0064               -0.0011
+no location feature                            0.6921      0.0065          0.6827     0.0093                -0.0064               -0.0033
+drop beds_imputed                              0.6957      0.0051          0.6856     0.0069                -0.0029               -0.0004
+drop accommodates                              0.6959      0.0040          0.6885     0.0052                -0.0026                0.0025

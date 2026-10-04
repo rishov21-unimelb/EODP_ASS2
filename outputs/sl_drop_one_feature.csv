@@ -1,0 +1,14 @@
+feature,knn_f1_drop,dt_f1_drop,knn_rank,dt_rank
+property_type_group,0.0351,0.0297,1,1
+bathrooms_num,0.0078,0.0104,4,2
+log_host_listings_count,0.0079,0.0063,3,3
+bedrooms_imputed,0.0034,0.0054,6,4
+log_minimum_nights,0.0089,0.0041,2,5
+dist_cbd_km,0.0064,0.0033,5,6
+beds_imputed,0.0029,0.0004,7,7
+review_scores_rating_imp,-0.0006,0.0003,10,8
+superhost_flag,-0.0021,0.0001,11,9
+has_rating,-0.0022,0.0,12,10
+availability_365,0.0018,-0.0,9,11
+log_number_of_reviews,-0.0028,-0.0018,13,12
+accommodates,0.0026,-0.0025,8,13
