@@ -29,11 +29,8 @@ def log(msg=""):
 RESULTS = {}   # every number quoted in the report -> supervised_results.json
 TIER_LABELS = ['Budget', 'Mid', 'Premium']
  
-# ## 1. Target and features
-# Target: price_tier (Budget / Mid / Premium tertiles of price, made in Code.py).
-# Price itself and anything calculated from price are NOT used as predictors (target leakage):
-# price_clean, log_price, price_tier_code, estimated_revenue_l365d (= price x occupancy), price_quote_*.
- 
+# Target and features
+# Target: price_tier (Budget / Mid / Premium tertiles of price)
 df = pd.read_csv(IN_PATH, low_memory=False)
 log(f"Loaded processed data: {df.shape}")
  
@@ -50,7 +47,7 @@ NUM_COLS = ['accommodates', 'bedrooms_imputed', 'beds_imputed', 'bathrooms_num',
             'log_number_of_reviews', 'log_minimum_nights', 'log_host_listings_count',
             'availability_365', 'superhost_flag']
  
-# one-hot encoding for the nominal property_type_group (7 groups -> 7 0/1 columns)
+# one-hot encoding for the nominal property_type_group
 dummies = pd.get_dummies(df['property_type_group'], prefix='ptype').astype(int)
 DUMMY_COLS = list(dummies.columns)
 df = pd.concat([df, dummies], axis=1)
@@ -70,11 +67,7 @@ log(f"\nTarget class counts (n={len(df)}):\n{class_counts.to_string()}")
 RESULTS['n_total'] = int(len(df))
 RESULTS['class_counts'] = class_counts.astype(int).to_dict()
  
-# ## 2. Train/test split: stratified 80/20
-# The tiers are ~1/3 each overall, but their mix changes a lot inside groups (Room in House:
-# 2814 Budget vs 115 Premium), so a purely random split can drift. Stratifying on price_tier
-# keeps the test set at exactly 1/3 per tier. No time-based split: the data is one scrape snapshot.
- 
+# Train/test split: stratified 80/20
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y,
                                                     random_state=RANDOM_STATE)
  
@@ -96,7 +89,7 @@ RESULTS['split'] = {'n_train': int(len(X_train)), 'n_test': int(len(X_test)),
                     'train_share_pct': train_share.to_dict(), 'test_share_pct': test_share.to_dict(),
                     'unstratified_test_share_pct': random_share.to_dict()}
  
-# ## 3. Helper functions
+# Helper functions
 
 # builds a KNN or Decision Tree from a dict of hyperparameters
 def make_model(name, params):
@@ -105,8 +98,6 @@ def make_model(name, params):
     return DecisionTreeClassifier(random_state=RANDOM_STATE, **params)
 
 # KNN is distance-based, so features are standardised.
-#   The scaler is fitted on the training part only, then applied to the evaluation part,
-#   exactly like the Evaluation workshop's KFold loop. Trees split on thresholds, so no scaling.
 def fit_and_predict(name, params, X_tr, y_tr, X_ev, cols=None):
     cols = X_COLS if cols is None else cols
     X_tr, X_ev = X_tr[cols], X_ev[cols]
@@ -130,8 +121,7 @@ def cv_macro_f1(name, params, cols=None):
     return np.mean(scores), np.std(scores)
  
 
-# ## 4. Hyperparameter tuning (5-fold stratified CV, metric = macro-F1)
- 
+# Hyperparameter tuning (5-fold stratified CV, metric = macro-F1)
 K_VALUES = [1, 3, 5, 7, 9, 11, 15, 21, 31, 41, 51, 75, 101]
 WEIGHTS = ['uniform', 'distance']
 DEPTHS = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, None]
@@ -181,7 +171,6 @@ RESULTS['dt_cv_macro_f1'] = round(float(best_dt_row['cv_macro_f1']), 4)
  
 
 # Validation curves (figure for the report)
- 
 fig, axes = plt.subplots(1, 2, figsize=(12, 4.2))
 for w, marker in [('uniform', 'o'), ('distance', 's')]:
     sub = knn_cv[knn_cv['weights'] == w]
@@ -206,9 +195,9 @@ plt.savefig(OUT_DIR + 'sl_validation_curves.png', dpi=150)
 plt.close()
  
 
-# ## 5. Effect of every hyperparameter changed from its sklearn default
+# Effect of every hyperparameter changed from its sklearn default
 # For each one, CV macro-F1 with ONLY that hyperparameter put back to its default
-# (the others stay at the chosen values), compared with the chosen value.
+# (the others stay at the chosen values), compared with the chosen value
  
 def knn_cv_at(k, w):
     return float(knn_cv[(knn_cv['n_neighbors'] == k) & (knn_cv['weights'] == w)]['cv_macro_f1'].iloc[0])
@@ -241,14 +230,12 @@ log(hp_df.round(4).to_string(index=False))
 RESULTS['hyperparameter_effects'] = hp_df.round(4).to_dict(orient='records')
 
 
-# ## 6. Final models: fit on the whole training set, evaluate ONCE on the test set
+# Final models: fit on the whole training set, evaluate ONCE on the test set
 # Metrics:
-#  - macro-F1 (main metric, also used for tuning): F1 averaged over the three tiers with equal
-#    weight, so a model cannot look good by doing well on Budget and Premium and failing Mid.
-#  - per-class precision, recall and F1: the RQ asks what DISTINGUISHES the tiers, so we need
-#    to see which tier is hard to tell apart, not just one overall number.
-#  - accuracy: reported for reference (tiers are balanced, so it is not misleading here).
-# Baseline: 0R (Zero-R) = always predict the most common tier in the training set.
+#  - macro-F1
+#  - per-class precision, recall and F1
+#  - accuracy
+# Baseline: 0R (Zero-R) = always predict the most common tier in the training set
  
 knn_model, knn_pred = fit_and_predict('knn', KNN_PARAMS, X_train, y_train, X_test)
 dt_model, dt_pred = fit_and_predict('dt', DT_PARAMS, X_train, y_train, X_test)
@@ -301,8 +288,7 @@ log(pd.DataFrame(improve).to_string(index=False))
 RESULTS['improvement_over_0R'] = improve
  
 
-# ### Confusion matrices (Evaluation workshop style; figure for the report)
- 
+# Confusion matrices
 fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.4))
 for ax, name in zip(axes, ['KNN (tuned)', 'DT (tuned)']):
     cm = confusion_matrix(y_test, preds[name], labels=TIER_LABELS)
@@ -313,10 +299,9 @@ plt.tight_layout()
 plt.savefig(OUT_DIR + 'sl_confusion_matrices.png', dpi=150)
 plt.close()
  
-# ## 7. Uncertainty: bootstrap with out-of-bag (OOB) testing
+# Uncertainty: bootstrap with out-of-bag testing
 # draw b bootstrap samples from the TRAINING data (same size, with replacement); train on each; evaluate on its OOB rows (~37% of the data); 
 # report the mean and spread of the b scores
- 
 B = 200
 rng = np.random.default_rng(RANDOM_STATE)
 n_train = len(X_train)
@@ -345,7 +330,7 @@ for col, label in [('knn', 'KNN (tuned)'), ('dt', 'DT (tuned)')]:
         f"95% interval [{lo:.4f}, {hi:.4f}]")
 RESULTS['bootstrap_oob_macro_f1'] = ci
  
-# ## 8. Feature influence
+# Feature influence
 # (a) Decision Tree: built-in feature importance = total entropy reduction contributed by each feature's splits. The 7 one-hot columns are added back
 #     together into one property_type_group value.
 # (b) Both models: drop one feature at a time, re-run the same 5-fold CV, and measure how much
@@ -393,7 +378,7 @@ plt.tight_layout()
 plt.savefig(OUT_DIR + 'sl_drop_one_feature.png', dpi=150)
 plt.close()
  
-# ## 9. Feature-set comparison (links the model back to preprocessing and correlation)
+# Feature-set comparison
 # Same tuned settings, same 5-fold stratified CV, only the feature set changes.
 #  - distance_band rows: preprocessing task 1 discretised distance into Inner/Middle/Outer bands.
 #    Compare the bands (one-hot) with continuous dist_cbd_km and with no location at all,
@@ -427,7 +412,7 @@ log("\nFeature-set comparison (5-fold stratified CV macro-F1, tuned settings):")
 log(variants.round(4).to_string())
 RESULTS['feature_variants'] = variants.round(4).reset_index().to_dict(orient='records')
  
-# Save everything
+# save everything
 def to_builtin(o):
     if isinstance(o, np.integer):
         return int(o)
