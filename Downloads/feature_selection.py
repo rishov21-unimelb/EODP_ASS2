@@ -122,7 +122,7 @@ log(f"Overlap: {sorted(set(top_f) & set(top_e))}; only filter: {sorted(set(top_f
     f"only embedded: {sorted(set(top_e) - set(top_f))}")
 for f in sorted(set(top_f) ^ set(top_e)):
     r = merged[merged.feature == f].iloc[0]
-    log(f"[Disagreement] {f}: filter rank {int(r.filter_rank)} (MI={r.MI:.3f}, NMI={r.NMI:.3f}) vs "
+    log(f"Disagreement {f}: filter rank {int(r.filter_rank)} (MI={r.MI:.3f}, NMI={r.NMI:.3f}) vs "
         f"embedded rank {int(r.embedded_rank)} (importance={r.tree_importance:.3f})")
 merged['rank_gap'] = merged['embedded_rank'] - merged['filter_rank']
 log("\nFeatures the filter ranks much higher than the tree:")
@@ -140,3 +140,58 @@ axes[1].set_title('Embedded: Decision Tree importance')
 plt.tight_layout()
 plt.savefig(OUT_DIR + 'feature_selection.png', dpi=150)
 plt.close()
+
+#hard case
+log("\nHard case - depth 3, single-feature stumps on each method's top feature:")
+def stump_pred(feat):
+    cols = FEATURE_COLS[feat]
+    st = DecisionTreeClassifier(max_depth=3, min_samples_leaf=50, random_state=42).fit(X_tr[cols], y_tr)
+    return st.predict(X_all[cols])
+
+fe, ff = top_e[0], top_f[0]
+num_top = next((f for f in top_e + top_f if f in NUM_COLS), NUM_COLS[0])
+col = X_all[num_top]
+rz = (col - col.median()) / (stats.median_abs_deviation(col, scale='normal') or 1)
+y_arr = y_all.values
+if fe != ff:
+    p_e, p_f = stump_pred(fe), stump_pred(ff)
+    disagree = p_e != p_f
+    one_right = (p_e == y_arr) ^ (p_f == y_arr)
+    cand = np.where(disagree & one_right)[0]
+    log(f"Top embedded feature = {fe}; top filter feature = {ff}; rows where the two stumps predict different tiers: "
+        f"{disagree.sum()} ({disagree.mean() * 100:.1f}%); of these exactly one stump is correct for {len(cand)} rows")
+    pool = cand if len(cand) else np.where(disagree)[0]
+    idx = int(pool[np.argmax(np.abs(rz.values[pool]))])
+    why = "the two methods' top features give different tier predictions"
+else:
+    idx = int(np.argmax(np.abs(rz.values)))
+    why = f"its {num_top} is far outside the typical range"
+row = fs.iloc[idx]
+log(f"Selected row: id={row['id']} ({why}); in the {'training' if fs.index[idx] in X_tr.index else 'test'} split")
+show = [c for c in ['room_type', 'property_type', 'property_type_group', 'accommodates', 'bedrooms',
+                    'bedrooms_imputed', 'bathrooms_num', 'dist_cbd_km', 'minimum_nights',
+                    'price_clean', 'price_tier'] if c in fs.columns]
+log(row[show].to_string())
+log(f"Feature {num_top}: value = {col.iloc[idx]:.2f} vs median {col.median():.2f}, "
+    f"95th percentile {col.quantile(.95):.2f}, max {col.max():.2f}; robust z = {rz.iloc[idx]:.1f}")
+if fe != ff:
+    log(f"Stump on {fe} predicts {p_e[idx]}; stump on {ff} predicts {p_f[idx]}; true tier = {y_arr[idx]}")
+
+# scenario evidence
+num_only = [c for c in NUM_COLS if c not in ('has_rating', 'superhost_flag')]
+sp = X_tr[num_only].corr(method='spearman').abs()
+for v in num_only:
+    sp.loc[v, v] = 0.0
+a, b = sp.stack().idxmax()
+log("\nScenario evidence - most redundant numeric pair (filter scores each alone; a tree splits on one):")
+for f in (a, b):
+    r = merged[merged.feature == f].iloc[0]
+    log(f"  {f}: MI={r.MI:.3f} (filter rank {int(r.filter_rank)}), "
+        f"tree importance={r.tree_importance:.3f} (embedded rank {int(r.embedded_rank)})")
+log(f"  Spearman between them = {sp.loc[a, b]:.3f}")
+ 
+merged.to_csv(OUT_DIR + 'feature_selection_table.csv', index=False)
+log("Saved: feature_selection.png, feature_selection_table.csv")
+ 
+with open(OUT_DIR + 'feature_selection_log.txt', 'w') as f:
+    f.write("\n".join(LOG))
