@@ -87,3 +87,56 @@ filter_rows.append({'feature': 'property_type_group', 'MI': mutual_info_score(dx
                     'NMI': normalized_mutual_info_score(dx, y_tr)})
 filter_tbl = pd.DataFrame(filter_rows).sort_values('MI', ascending=False).reset_index(drop=True)
 filter_tbl['filter_rank'] = np.arange(1, len(filter_tbl) + 1)
+
+#embedded decision tree 
+res_path = OUT_DIR + 'supervised_results.json'
+sl_results = None
+if os.path.exists(res_path):
+    with open(res_path) as f:
+        sl_results = json.load(f)
+    dt_params = sl_results['dt_params']
+    log(f"Tree settings read from supervised_results.json: {dt_params}")
+else:
+    log(f"supervised_results.json not found, run supervised_ml_code.py first to get the decision tree parameters.")
+
+tree = DecisionTreeClassifier(random_state=42, **dt_params).fit(X_tr[X_COLS], y_tr)
+imp = pd.Series(tree.feature_importances_, index=X_COLS)
+emb = imp[NUM_COLS].copy()
+emb['property_type_group'] = imp[DUMMY_COLS].sum()
+embedded_tbl = emb.sort_values(ascending=False).rename('tree_importance').rename_axis('feature').reset_index()
+embedded_tbl['embedded_rank'] = np.arange(1, len(embedded_tbl) + 1)
+if sl_results is not None and 'dt_feature_importance' in sl_results:
+    theirs = pd.Series(sl_results['dt_feature_importance'])
+    diff = (emb.reindex(theirs.index) - theirs).abs().max()
+    log(f"Check vs supervised section: max |importance difference| = {diff:.6f} (should be ~0)")
+
+
+merged = filter_tbl.merge(embedded_tbl, on='feature')
+log("\nFull ranking (filter MI vs embedded tree importance):")
+log(merged.round(4).to_string(index=False))
+top_f = filter_tbl['feature'].head(3).tolist()
+top_e = embedded_tbl['feature'].head(3).tolist()
+log(f"\nTOP-3 FILTER (MI):        {top_f}")
+log(f"TOP-3 EMBEDDED (DTree):   {top_e}")
+log(f"Overlap: {sorted(set(top_f) & set(top_e))}; only filter: {sorted(set(top_f) - set(top_e))}; "
+    f"only embedded: {sorted(set(top_e) - set(top_f))}")
+for f in sorted(set(top_f) ^ set(top_e)):
+    r = merged[merged.feature == f].iloc[0]
+    log(f"[Disagreement] {f}: filter rank {int(r.filter_rank)} (MI={r.MI:.3f}, NMI={r.NMI:.3f}) vs "
+        f"embedded rank {int(r.embedded_rank)} (importance={r.tree_importance:.3f})")
+merged['rank_gap'] = merged['embedded_rank'] - merged['filter_rank']
+log("\nFeatures the filter ranks much higher than the tree:")
+log(merged.nlargest(2, 'rank_gap')[['feature', 'filter_rank', 'embedded_rank', 'MI', 'tree_importance']].round(3).to_string(index=False))
+log("Features the tree ranks much higher than the filter:")
+log(merged.nsmallest(2, 'rank_gap')[['feature', 'filter_rank', 'embedded_rank', 'MI', 'tree_importance']].round(3).to_string(index=False))
+ 
+fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+filter_tbl.sort_values('MI').plot.barh(x='feature', y='MI', ax=axes[0], color='#4C72B0', legend=False)
+axes[0].set_title('Filter: mutual information with price tier')
+embedded_tbl.sort_values('tree_importance').plot.barh(x='feature', y='tree_importance', ax=axes[1],
+                                                      color="#557CA8", legend=False)
+
+axes[1].set_title('Embedded: Decision Tree importance')
+plt.tight_layout()
+plt.savefig(OUT_DIR + 'feature_selection.png', dpi=150)
+plt.close()
