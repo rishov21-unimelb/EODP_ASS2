@@ -1,0 +1,61 @@
+Loaded processed data: (18972, 103)
+
+======================================================================
+Feature selection (filter: MI/NMI, embedded: Decision Tree importance)
+======================================================================
+Feature selection uses the TRAINING split only (n=15177 of 18972), so the test set plays no part in ranking features.
+Feature pool: 12 numeric + property_type_group (7 one-hot columns) = 13 features. price_clean is excluded (it defines the target).
+Tree settings read from supervised_results.json: {'criterion': 'entropy', 'max_depth': 10, 'min_samples_leaf': 20}
+Check vs supervised section: max |importance difference| = 0.000045 (should be ~0)
+
+Full ranking (filter MI vs embedded tree importance):
+                 feature     MI    NMI  filter_rank  tree_importance  embedded_rank
+     property_type_group 0.2373 0.1964            1           0.1957              2
+        bedrooms_imputed 0.2352 0.2082            2           0.1183              3
+            accommodates 0.2268 0.1877            3           0.4305              1
+            beds_imputed 0.1260 0.1234            4           0.0058             11
+           bathrooms_num 0.0934 0.0951            5           0.0273              8
+             dist_cbd_km 0.0289 0.0170            6           0.0484              5
+        availability_365 0.0246 0.0145            7           0.0361              6
+      log_minimum_nights 0.0173 0.0187            8           0.0322              7
+ log_host_listings_count 0.0164 0.0108            9           0.0571              4
+   log_number_of_reviews 0.0161 0.0099           10           0.0269              9
+review_scores_rating_imp 0.0110 0.0069           11           0.0173             10
+              has_rating 0.0067 0.0089           12           0.0011             13
+          superhost_flag 0.0037 0.0042           13           0.0032             12
+
+TOP-3 FILTER (MI):        ['property_type_group', 'bedrooms_imputed', 'accommodates']
+TOP-3 EMBEDDED (DTree):   ['accommodates', 'property_type_group', 'bedrooms_imputed']
+Overlap: ['accommodates', 'bedrooms_imputed', 'property_type_group']; only filter: []; only embedded: []
+
+Features the filter ranks much higher than the tree:
+      feature  filter_rank  embedded_rank    MI  tree_importance
+ beds_imputed            4             11 0.126            0.006
+bathrooms_num            5              8 0.093            0.027
+Features the tree ranks much higher than the filter:
+                feature  filter_rank  embedded_rank    MI  tree_importance
+log_host_listings_count            9              4 0.016            0.057
+           accommodates            3              1 0.227            0.430
+
+Hard case - depth 3, single-feature stumps on each method's top feature:
+Top embedded feature = accommodates; top filter feature = property_type_group; rows where the two stumps predict different tiers: 8664 (45.7%); of these exactly one stump is correct for 7545 rows
+Selected row: id=23671373 (the two methods' top features give different tier predictions); in the training split
+room_type                  Entire home/apt
+property_type                    Farm stay
+property_type_group    Entire Unique/Other
+accommodates                            16
+bedrooms                               7.0
+bedrooms_imputed                       7.0
+bathrooms_num                          4.5
+dist_cbd_km                      68.264092
+minimum_nights                         2.0
+price_clean                          317.0
+price_tier                         Premium
+Feature accommodates: value = 16.00 vs median 4.00, 95th percentile 8.00, max 16.00; robust z = 4.0
+Stump on accommodates predicts Premium; stump on property_type_group predicts Mid; true tier = Premium
+
+Scenario evidence - most redundant numeric pair (filter scores each alone; a tree splits on one):
+  accommodates: MI=0.227 (filter rank 3), tree importance=0.430 (embedded rank 1)
+  beds_imputed: MI=0.126 (filter rank 4), tree importance=0.006 (embedded rank 11)
+  Spearman between them = 0.886
+Saved: feature_selection.png, feature_selection_table.csv
