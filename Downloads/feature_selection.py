@@ -46,7 +46,7 @@ log("\n" + "=" * 70)
 log("Feature selection (filter: MI/NMI, embedded: Decision Tree importance)")
 log("=" * 70)
  
-# Same features, encoding and split as supervised_ml_code.py so the numbers agree across sections
+# encoding and split as supervised_ml_code.py so the numbers agree across sections
 fs = df.copy()
 fs['superhost_flag'] = (fs['host_is_superhost'] == 't').astype(int)
 fs['log_minimum_nights'] = np.log1p(fs['minimum_nights'])
@@ -75,3 +75,15 @@ log(f"Feature selection uses the TRAINING split only (n={len(X_tr)} of {len(X_al
     f"so the test set plays no part in ranking features.")
 log(f"Feature pool: {len(NUM_COLS)} numeric + property_type_group ({len(DUMMY_COLS)} one-hot columns) "
     f"= {len(FEATURE_COLS)} features. price_clean is excluded (it defines the target).")
+
+#filter MI of each feature with price tier
+filter_rows = []
+for f in NUM_COLS:
+    dx = discretise(X_tr[f])
+    filter_rows.append({'feature': f, 'MI': mutual_info_score(dx, y_tr),
+                        'NMI': normalized_mutual_info_score(dx, y_tr)})
+dx = discretise(fs.loc[X_tr.index, 'property_type_group'])
+filter_rows.append({'feature': 'property_type_group', 'MI': mutual_info_score(dx, y_tr),
+                    'NMI': normalized_mutual_info_score(dx, y_tr)})
+filter_tbl = pd.DataFrame(filter_rows).sort_values('MI', ascending=False).reset_index(drop=True)
+filter_tbl['filter_rank'] = np.arange(1, len(filter_tbl) + 1)
